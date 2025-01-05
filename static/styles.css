@@ -1,0 +1,82 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f9f9f9;
+    text-align: center;
+    padding-top: 50px;
+}
+
+.container {
+    background-color: #ffffff;
+    padding: 40px;
+    margin: auto;
+    width: 60%;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+}
+
+h1 {
+    color: #333333;
+    margin-bottom: 30px;
+}
+
+.input-section {
+    margin-bottom: 20px;
+}
+
+input[type="text"] {
+    width: 70%;
+    padding: 10px;
+    font-size: 16px;
+    border: 2px solid #4CAF50;
+    border-radius: 5px;
+    margin-right: 10px;
+}
+
+button {
+    background-color: #4CAF50; /* 绿色 */
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background-color 0.3s ease;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+#result {
+    margin-top: 30px;
+    text-align: left;
+}
+
+#result h2 {
+    color: #4CAF50;
+    margin-bottom: 10px;
+}
+
+#result h3 {
+    color: #333333;
+    margin-top: 20px;
+}
+
+#result p {
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+#result strong {
+    color: #333333;
+}
+
+.overall-interpretation {
+    background-color: #f0f8ff;
+    padding: 15px;
+    border-left: 4px solid #4CAF50;
+    margin-top: 15px;
+}
