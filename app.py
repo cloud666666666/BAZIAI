@@ -1,108 +1,16 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify, Response
 import random
+import requests
+import json
+import os
+from openai import OpenAI
 from hexagrams import HEXAGRAMS
+from time_bazi import get_bazi
 
 app = Flask(__name__)
 
-KING_WEN_ORDER = [
-    "111111",  # 1
-    "000000",  # 2
-    "010001",  # 3
-    "100010",  # 4
-    "010111",  # 5
-    "111010",  # 6
-    "000010",  # 7
-    "010000",  # 8
-    "110111",  # 9
-    "111011",  # 10
-    "000111",  # 11
-    "111000",  # 12
-    "111101",  # 13
-    "101111",  # 14
-    "000100",  # 15
-    "001000",  # 16
-    "011001",  # 17
-    "100110",  # 18
-    "000011",  # 19
-    "110000",  # 20
-    "101001",  # 21
-    "100101",  # 22
-    "100000",  # 23
-    "000001",  # 24
-    "111001",  # 25
-    "100111",  # 26
-    "100001",  # 27
-    "011110",  # 28
-    "010010",  # 29
-    "101101",  # 30
-    "011100",  # 31
-    "001110",  # 32
-    "111100",  # 33
-    "001111",  # 34
-    "101000",  # 35
-    "000101",  # 36
-    "110101",  # 37
-    "101011",  # 38
-    "010100",  # 39
-    "001010",  # 40
-    "100011",  # 41
-    "110001",  # 42
-    "011111",  # 43
-    "111110",  # 44
-    "011000",  # 45
-    "000110",  # 46
-    "011010",  # 47
-    "010110",  # 48
-    "011101",  # 49
-    "101110",  # 50
-    "001001",  # 51
-    "100100",  # 52
-    "110100",  # 53
-    "001011",  # 54
-    "001101",  # 55
-    "101100",  # 56
-    "110110",  # 57
-    "011011",  # 58
-    "110010",  # 59
-    "010011",  # 60
-    "110011",  # 61
-    "001100",  # 62
-    "010101",  # 63 
-    "101010",  # 64
-]
 
 
-def generate_lines():
-    """
-    生成六个随机的爻（0为阴，1为阳）。
-    返回一个列表，从下到上（line 1到line 6）。
-    """
-    return [random.choice([0, 1]) for _ in range(6)]
-
-def get_hexagram_number(lines):
-    """
-    根据六个爻生成卦象编号（1-64）。
-    """
-    binary_str = ''.join(str(line) for line in reversed(lines))  # 从上到下转换
-    try:
-        index = KING_WEN_ORDER.index(binary_str) + 1
-        return str(index)
-    except ValueError:
-        return None
-
-def determine_changing_lines(lines):
-    """
-    随机确定哪些爻是动爻。
-    返回一个列表，True表示该爻是动爻，False表示不动。
-    """
-    # 每个爻有1/4的概率是动爻
-    return [random.random() < 0.25 for _ in range(6)]
-
-def transform_lines(lines, changing_lines):
-    """
-    根据动爻列表转换六个爻，生成变卦。
-    """
-    return [line ^ 1 if changing else line for line, changing in zip(lines, changing_lines)]
 
 analysis_dict = {}
 for main_id in range(1, 65):
@@ -4274,49 +4182,318 @@ analysis_dict['64']['64'] = "未济卦转未济卦，象征持续的未济与待
 
 @app.route('/')
 def index():
-    # 1) 生成本卦
-    main_lines = generate_lines()
-    main_hexagram_num = get_hexagram_number(main_lines)
-    main_hexagram = HEXAGRAMS.get(main_hexagram_num)
+    """
+    主页面重定向到八字分析页面
+    """
+    from flask import redirect, url_for
+    return redirect(url_for('bazi_analysis'))
 
-    # 2) 判断是否有动爻
-    changing_lines = determine_changing_lines(main_lines)
-    has_changing = any(changing_lines)
+# 八字与卦象对应关系
+# 根据天干地支的五行属性来配卦
+TIAN_GAN_WUXING = {
+    "甲": "木", "乙": "木", "丙": "火", "丁": "火", "戊": "土", "己": "土",
+    "庚": "金", "辛": "金", "壬": "水", "癸": "水"
+}
 
-    transformed_hexagram = None
-    transformed_lines = None
-    transformed_hexagram_num = None
+DI_ZHI_WUXING = {
+    "子": "水", "丑": "土", "寅": "木", "卯": "木", "辰": "土", "巳": "火",
+    "午": "火", "未": "土", "申": "金", "酉": "金", "戌": "土", "亥": "水"
+}
 
-    # 3) 如果有动爻，就生成变卦
-    if has_changing:
-        transformed_lines = transform_lines(main_lines, changing_lines)
-        transformed_hexagram_num = get_hexagram_number(transformed_lines)
-        transformed_hexagram = HEXAGRAMS.get(transformed_hexagram_num)
+# 五行与卦象对应关系
+WUXING_TO_HEXAGRAM = {
+    "木": 4,  # 震卦
+    "火": 3,  # 离卦  
+    "土": 2,  # 坤卦
+    "金": 1,  # 乾卦
+    "水": 6   # 坎卦
+}
 
-    # 4) 根据组合 (本卦 -> 变卦) 或 (本卦 -> 本卦) 来查找分析
-    analysis = None
-    if main_hexagram_num:
-        if has_changing and transformed_hexagram_num:
-            analysis = analysis_dict.get(main_hexagram_num, {}).get(
-                transformed_hexagram_num,
-                "当前卦象组合的分析尚未添加。"
-            )
+def bazi_to_hexagram(bazi_info):
+    """
+    根据八字信息生成对应的卦象
+    使用日柱的天干地支来确定主卦
+    """
+    try:
+        # 提取日柱的天干地支
+        day_pillar = bazi_info["日柱"]
+        if len(day_pillar) >= 2:
+            tian_gan = day_pillar[0]
+            di_zhi = day_pillar[1]
+            
+            # 获取天干地支的五行属性
+            gan_wuxing = TIAN_GAN_WUXING.get(tian_gan, "出现错误了")
+            zhi_wuxing = DI_ZHI_WUXING.get(di_zhi, "出现错误了")
+            
+            # 根据天干五行确定主卦
+            main_hexagram = WUXING_TO_HEXAGRAM.get(gan_wuxing, "出现错误了")
+            
+            # 根据地支五行确定变卦（如果有变化）
+            # 这里简化处理，可以根据实际需要调整
+            changing_hexagram = WUXING_TO_HEXAGRAM.get(zhi_wuxing, main_hexagram)
+            
+            return {
+                "主卦": main_hexagram,
+                "变卦": changing_hexagram,
+                "天干五行": gan_wuxing,
+                "地支五行": zhi_wuxing,
+                "日柱": day_pillar
+            }
+    except Exception as e:
+        print(f"八字转卦象错误: {e}")
+        return None
+
+def call_llm_api(prompt, stream=False):
+    """
+    调用DeepSeek API生成分析
+    使用OpenAI SDK调用DeepSeek Chat模型进行八字和易经分析
+    """
+    try:
+        # 从环境变量获取API密钥
+        api_key = os.getenv('DEEPSEEK_API_KEY')
+        if not api_key:
+            return "LLM API密钥未配置，请设置DEEPSEEK_API_KEY环境变量"
+        
+        # 创建OpenAI客户端，使用DeepSeek的base_url
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com"
+        )
+        
+        # 调用DeepSeek API
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {
+                    "role": "system", 
+                    "content": "你是一位精通八字命理和易经的专家，请根据提供的八字和卦象信息，给出专业、详细的分析和建议。请使用简洁明了的语言，避免过多的特殊符号和格式。"
+                },
+                {
+                    "role": "user", 
+                    "content": prompt
+                }
+            ],
+            max_tokens=1500,
+            temperature=0.7,
+            stream=stream
+        )
+        
+        if stream:
+            return response
         else:
-            # 没有动爻，变卦 == 本卦
-            analysis = analysis_dict.get(main_hexagram_num, {}).get(
-                main_hexagram_num,
-                "没有动爻。"
-            )
+            return response.choices[0].message.content
+            
+    except Exception as e:
+        return f"LLM API调用错误: {str(e)}"
 
-    return render_template(
-        'index.html',
-        main_hexagram=main_hexagram,
-        main_lines=main_lines,
-        changing_lines=changing_lines,
-        transformed_hexagram=transformed_hexagram,
-        transformed_lines=transformed_lines if has_changing else None,
-        analysis=analysis
+def get_bazi_analysis(bazi_info, hexagram_info):
+    """
+    根据八字和卦象信息生成分析
+    """
+    if not hexagram_info:
+        return "无法生成卦象分析"
+    
+    main_hexagram_num = hexagram_info["主卦"]
+    changing_hexagram_num = hexagram_info["变卦"]
+    
+    # 获取卦象信息
+    main_hexagram = (HEXAGRAMS.get(str(main_hexagram_num), {}))
+    changing_hexagram = (HEXAGRAMS.get(str(changing_hexagram_num), {}))
+    print("main_hexagram:", main_hexagram.get("name", "未知"), "changing_hexagram:", changing_hexagram.get("name", "未知"))
+    
+    # 获取基础分析
+    basic_analysis = analysis_dict.get(str(main_hexagram_num), {}).get(
+        str(changing_hexagram_num), 
+        "当前卦象组合的分析尚未添加。"
     )
+    
+    # 构建LLM提示词
+    llm_prompt = f"""
+    请分析以下八字和卦象信息：
+
+    八字：{bazi_info["八字"]}
+    生肖：{bazi_info["生肖"]}
+    主卦：{main_hexagram.get("name", "未知")} - {main_hexagram.get("description", "暂无卦辞")}
+    变卦：{changing_hexagram.get("name", "未知")} - {changing_hexagram.get("description", "暂无卦辞")}
+    天干五行：{hexagram_info["天干五行"]}
+    地支五行：{hexagram_info["地支五行"]}
+    
+    基础分析：{basic_analysis}
+    
+    请基于以上信息，从性格特点、运势走向、人生建议等方面给出详细的分析。
+    """
+    print("llm_prompt:", llm_prompt)
+    # 调用LLM生成详细分析
+    llm_analysis = call_llm_api(llm_prompt)
+
+    
+    return {
+        "八字": bazi_info["八字"],
+        "生肖": bazi_info["生肖"],
+        "主卦": {
+            "名称": main_hexagram.get("name", "未知"),
+            "卦辞": main_hexagram.get("description", "暂无卦辞")
+        },
+        "变卦": {
+            "名称": changing_hexagram.get("name", "未知"),
+            "卦辞": changing_hexagram.get("description", "暂无卦辞")
+        },
+        "基础分析": basic_analysis,
+        "LLM分析": llm_analysis,
+        "五行信息": {
+            "天干五行": hexagram_info["天干五行"],
+            "地支五行": hexagram_info["地支五行"]
+        }
+    }
+
+@app.route('/bazi_analysis', methods=['GET', 'POST'])
+def bazi_analysis():
+    """
+    八字分析路由
+    接收时间参数，生成八字，转换为卦象，并返回分析结果
+    """
+    if request.method == 'GET':
+        return render_template('bazi_input.html')
+    
+    if request.method == 'POST':
+        try:
+            # 获取时间参数
+            year = int(request.form.get('year'))
+            month = int(request.form.get('month'))
+            day = int(request.form.get('day'))
+            hour = int(request.form.get('hour'))
+            
+            # 生成八字（生肖按农历新年计算）
+            bazi_info = get_bazi(year, month, day, hour)
+            print(bazi_info)
+            
+            # 转换为卦象
+            hexagram_info = bazi_to_hexagram(bazi_info)
+            print(hexagram_info)
+            # 生成分析
+            analysis_result = get_bazi_analysis(bazi_info, hexagram_info)
+            print(analysis_result)
+            return jsonify({
+                "success": True,
+                "data": analysis_result
+            })
+            
+        except Exception as e:
+            return jsonify({
+                "success": False,
+                "error": f"分析失败: {str(e)}"
+            })
+    
+    # GET请求返回输入页面
+    return render_template('bazi_input.html')
+
+@app.route('/bazi_analysis_stream', methods=['POST'])
+def bazi_analysis_stream():
+    """
+    八字分析流式传输路由
+    接收时间参数，生成八字，转换为卦象，并流式返回分析结果
+    """
+    try:
+        # 获取时间参数
+        year = int(request.form.get('year'))
+        month = int(request.form.get('month'))
+        day = int(request.form.get('day'))
+        hour = int(request.form.get('hour'))
+        
+        # 生成八字（生肖按农历新年计算）
+        bazi_info = get_bazi(year, month, day, hour)
+        print(bazi_info)
+        
+        # 转换为卦象
+        hexagram_info = bazi_to_hexagram(bazi_info)
+        print(hexagram_info)
+        
+        if not hexagram_info:
+            return jsonify({
+                "success": False,
+                "error": "无法生成卦象分析"
+            })
+        
+        main_hexagram_num = hexagram_info["主卦"]
+        changing_hexagram_num = hexagram_info["变卦"]
+        
+        # 获取卦象信息
+        main_hexagram = (HEXAGRAMS.get(str(main_hexagram_num), {}))
+        changing_hexagram = (HEXAGRAMS.get(str(changing_hexagram_num), {}))
+        
+        # 获取基础分析
+        basic_analysis = analysis_dict.get(str(main_hexagram_num), {}).get(
+            str(changing_hexagram_num), 
+            "当前卦象组合的分析尚未添加。"
+        )
+        
+        # 构建LLM提示词
+        llm_prompt = f"""
+        请分析以下八字和卦象信息：
+
+        八字：{bazi_info["八字"]}
+        生肖：{bazi_info["生肖"]}
+        主卦：{main_hexagram.get("name", "未知")} - {main_hexagram.get("description", "暂无卦辞")}
+        变卦：{changing_hexagram.get("name", "未知")} - {changing_hexagram.get("description", "暂无卦辞")}
+        天干五行：{hexagram_info["天干五行"]}
+        地支五行：{hexagram_info["地支五行"]}
+        
+        基础分析：{basic_analysis}
+        
+        请基于以上信息，从性格特点、运势走向、人生建议等方面给出详细的分析。请使用简洁明了的语言，避免过多的特殊符号和格式。
+        """
+        
+        # 准备基础数据
+        base_data = {
+            "八字": bazi_info["八字"],
+            "生肖": bazi_info["生肖"],
+            "主卦": {
+                "名称": main_hexagram.get("name", "未知"),
+                "卦辞": main_hexagram.get("description", "暂无卦辞")
+            },
+            "变卦": {
+                "名称": changing_hexagram.get("name", "未知"),
+                "卦辞": changing_hexagram.get("description", "暂无卦辞")
+            },
+            "基础分析": basic_analysis,
+            "五行信息": {
+                "天干五行": hexagram_info["天干五行"],
+                "地支五行": hexagram_info["地支五行"]
+            }
+        }
+        
+        def generate():
+            # 首先发送基础数据
+            yield f"data: {json.dumps({'type': 'base_data', 'data': base_data}, ensure_ascii=False)}\n\n"
+            
+            # 然后流式发送LLM分析
+            try:
+                llm_response = call_llm_api(llm_prompt, stream=True)
+                if hasattr(llm_response, '__iter__'):
+                    for chunk in llm_response:
+                        if chunk.choices[0].delta.content:
+                            content = chunk.choices[0].delta.content
+                            # 清理特殊字符
+                            content = content.replace('\n', '\\n').replace('\r', '')
+                            yield f"data: {json.dumps({'type': 'llm_chunk', 'content': content}, ensure_ascii=False)}\n\n"
+                else:
+                    # 如果不是流式响应，直接发送完整内容
+                    content = str(llm_response).replace('\n', '\\n').replace('\r', '')
+                    yield f"data: {json.dumps({'type': 'llm_complete', 'content': content}, ensure_ascii=False)}\n\n"
+            except Exception as e:
+                error_msg = f"LLM API调用错误: {str(e)}"
+                yield f"data: {json.dumps({'type': 'llm_error', 'content': error_msg}, ensure_ascii=False)}\n\n"
+            
+            # 发送结束信号
+            yield f"data: {json.dumps({'type': 'complete'}, ensure_ascii=False)}\n\n"
+        
+        return Response(generate(), mimetype='text/plain')
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"分析失败: {str(e)}"
+        })
 
 if __name__ == '__main__':
     app.run(debug=True)

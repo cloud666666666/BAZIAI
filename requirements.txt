@@ -1,0 +1,5 @@
+Flask==2.3.3
+requests==2.31.0
+sxtwl==1.0.0
+openai>=1.0.0
+beautifulsoup4>=4.12.0
