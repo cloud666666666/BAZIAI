@@ -28,8 +28,8 @@
 
 1. **克隆项目**
 ```bash
-git clone https://github.com/cloud666666666/bazi_Rag.git
-cd bazi_Rag
+git clone https://github.com/cloud666666666/BAZIAI.git
+cd BAZIAI
 ```
 
 2. **安装依赖**
@@ -57,7 +57,7 @@ python app.py
 ## 📁 项目结构
 
 ```
-bazi_Rag/
+BAZIAI/
 ├── app.py                 # Flask主应用
 ├── hexagrams.py           # 易经六十四卦数据
 ├── time_bazi.py          # 八字计算核心模块
@@ -227,8 +227,8 @@ analysis_dict['主卦ID']['变卦ID'] = "分析内容"
 
 如有问题或建议，请通过以下方式联系：
 
-- 提交 Issue: [GitHub Issues](https://github.com/cloud666666666/bazi_Rag/issues)
-- 邮箱: [您的邮箱]
+- 提交 Issue: [GitHub Issues](https://github.com/cloud666666666/BAZIAI/issues)
+- 邮箱: yunhaowang326@gmail.com
 
 ---
 
